@@ -1,0 +1,21 @@
+{
+  "name": "adminapp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+  "dev": "nodemon --legacy-watch app.js",
+  "start": "node app.js"
+},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "debug": "^4.4.1",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "finalhandler": "^2.1.0",
+    "firebase-admin": "^13.4.0"
+  },
+  "description": ""
+}
