@@ -145,7 +145,7 @@ jobs:
             sudo docker compose -f docker-compose.yml config
             sudo docker compose up -d nginx express-app-admin-1
             sudo docker compose exec -T nginx nginx -t
-            [ -f scripts/render_upstream.sh ] && sudo bash scripts/render_upstream.sh || true
+            # [ -f scripts/render_upstream.sh ] && sudo bash scripts/render_upstream.sh || true
             sudo docker compose up -d express-app-admin-2 express-app-admin-3
             sudo docker compose exec -T nginx nginx -s reload || true
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
