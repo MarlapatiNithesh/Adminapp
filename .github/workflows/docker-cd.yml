@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Docker CI"]
     types: [completed]
-  workflow_dispatch: {}  # manual trigger for testing
+  workflow_dispatch: {}
 
 concurrency:
   group: "docker-cd-${{ github.ref }}"
@@ -13,7 +13,6 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Server
-    # Run when CI succeeded OR when manually triggered
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -32,30 +31,22 @@ jobs:
           DKR_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
         run: |
           set -Eeuo pipefail
-          set -x
-          [ -n "$REQ_VPS_HOST" ] || { echo "::error::Missing required secret: VPS_HOST"; exit 1; }
-          [ -n "$REQ_VPS_USERNAME" ] || { echo "::error::Missing required secret: VPS_USERNAME"; exit 1; }
-          [ -n "$REQ_VPS_SSH_KEY" ] || { echo "::error::Missing required secret: VPS_SSH_KEY"; exit 1; }
-          echo "Secrets OK"
+          [ -n "$REQ_VPS_HOST" ] || { echo "::error::Missing VPS_HOST"; exit 1; }
+          [ -n "$REQ_VPS_USERNAME" ] || { echo "::error::Missing VPS_USERNAME"; exit 1; }
+          [ -n "$REQ_VPS_SSH_KEY" ] || { echo "::error::Missing VPS_SSH_KEY"; exit 1; }
           if [ -z "$DKR_USER" ] || [ -z "$DKR_TOKEN" ]; then
             echo "::warning::Docker Hub creds not set. Assuming public image."
           fi
 
-      - name: Guard: ensure infra exists in repo
-        run: |
-          set -Eeuo pipefail
-          set -x
-          test -d infra || { echo "::error::infra/ not found at repo root"; exit 1; }
-          test -f infra/docker-compose.yml || { echo "::error::infra/docker-compose.yml missing"; exit 1; }
-          ls -lah infra || true
-          ls -lah infra/nginx || true
-          ls -lah infra/nginx/conf.d || true
-          ls -lah infra/scripts || true
+      # - name: Guard: ensure infra exists in repo
+      #   run: |
+      #     set -Eeuo pipefail
+      #     test -d infra || { echo "::error::infra/ not found at repo root"; exit 1; }
+      #     test -f infra/docker-compose.yml || { echo "::error::infra/docker-compose.yml missing"; exit 1; }
 
       - name: Pack infra as tarball
         run: |
           set -Eeuo pipefail
-          set -x
           tar -czf infra.tar.gz -C infra .
           ls -lah infra.tar.gz
 
@@ -68,13 +59,9 @@ jobs:
           port: 22
           script_stop: true
           debug: true
-          # If you hit "host key mismatch", add: fingerprint: "ssh-ed25519 AAAA...."
           script: |
             set -Eeuo pipefail
-            set -x
             echo "SSH OK on $(hostname)"
-            whoami
-            uname -a
 
       - name: Prep /opt/app on VPS
         uses: appleboy/ssh-action@v0.1.7
@@ -87,10 +74,8 @@ jobs:
           debug: true
           script: |
             set -Eeuo pipefail
-            set -x
             sudo mkdir -p /opt/app
             sudo chown -R "$USER:$USER" /opt/app
-            ls -lah /opt/app || true
 
       - name: Copy tarball to VPS (scp)
         uses: appleboy/scp-action@v0.1.7
@@ -103,10 +88,6 @@ jobs:
           debug: true
           source: infra.tar.gz
           target: /opt/app/
-          # If your private key is passphrase-protected, also set:
-          # passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
-          # If you hit host key issues, add:
-          # fingerprint: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...."
 
       - name: Unpack infra on VPS
         uses: appleboy/ssh-action@v0.1.7
@@ -119,15 +100,10 @@ jobs:
           debug: true
           script: |
             set -Eeuo pipefail
-            set -x
             cd /opt/app
             tar -xzf infra.tar.gz
             rm -f infra.tar.gz
-            # After unpack, the files are now directly in /opt/app/ (docker-compose.yml, nginx/, scripts/)
             ls -lah /opt/app
-            ls -lah /opt/app/nginx || true
-            ls -lah /opt/app/nginx/conf.d || true
-            ls -lah /opt/app/scripts || true
 
       - name: Deploy via SSH (HTTP only)
         uses: appleboy/ssh-action@v0.1.7
@@ -141,18 +117,12 @@ jobs:
           envs: DKR_USER,DKR_TOKEN
           script: |
             set -Eeuo pipefail
-            set -x
-
             cd /opt/app
-
-            # Sanity checks
-            [ -f docker-compose.yml ] || { echo "::error::docker-compose.yml missing in /opt/app"; exit 1; }
+            [ -f docker-compose.yml ] || { echo "::error::docker-compose.yml missing"; exit 1; }
             [ -f nginx/nginx.conf ] || { echo "::error::nginx/nginx.conf missing"; exit 1; }
             [ -f nginx/conf.d/app.conf ] || { echo "::error::nginx/conf.d/app.conf missing"; exit 1; }
 
-            # Ensure Docker + Compose
             if ! command -v docker >/dev/null 2>&1; then
-              echo "Installing Docker..."
               curl -fsSL https://get.docker.com | sh
               sudo usermod -aG docker "$USER" || true
             fi
@@ -160,12 +130,10 @@ jobs:
             sudo docker --version
             sudo docker compose version || true
 
-            # Docker Hub login (only if private image)
             if [ -n "${DKR_USER:-}" ] && [ -n "${DKR_TOKEN:-}" ]; then
               echo "$DKR_TOKEN" | sudo docker login -u "$DKR_USER" --password-stdin
             fi
 
-            # Replace image placeholder if present
             if grep -q "__DOCKER_HUB_IMAGE__" docker-compose.yml; then
               if [ -n "${DKR_USER:-}" ]; then
                 sudo sed -i "s|__DOCKER_HUB_IMAGE__|$DKR_USER/admin-app:latest|g" docker-compose.yml
@@ -174,28 +142,11 @@ jobs:
               fi
             fi
 
-            # Validate compose BEFORE starting
             sudo docker compose -f docker-compose.yml config
-
-            # Start nginx + one app first
             sudo docker compose up -d nginx express-app-admin-1
-
-            # Validate Nginx config inside the container
             sudo docker compose exec -T nginx nginx -t
-
-            # Optional upstream rendering
-            if [ -f scripts/render_upstream.sh ]; then
-              sudo chmod +x scripts/render_upstream.sh
-              sudo bash scripts/render_upstream.sh || true
-            fi
-
-            # Start remaining replicas
+            [ -f scripts/render_upstream.sh ] && sudo bash scripts/render_upstream.sh || true
             sudo docker compose up -d express-app-admin-2 express-app-admin-3
-
-            # Reload Nginx
             sudo docker compose exec -T nginx nginx -s reload || true
-
-            # Health probe (adjust path if needed)
-            curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding (ensure route exists)"
-
+            curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
             echo "Deployment complete ✅ (HTTP only)"
