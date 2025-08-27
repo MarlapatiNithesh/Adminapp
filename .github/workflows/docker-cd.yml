@@ -19,26 +19,26 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout (infra files)
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Validate required secrets
         env:
-          REQ_VPS_HOST: ${{ secrets.VPS_HOST }}
-          REQ_VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
-          REQ_VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USERNAME: ${{ secrets.VPS_USERNAME }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           DKR_USER: ${{ secrets.DOCKER_HUB_USERNAME }}
           DKR_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
         run: |
           set -Eeuo pipefail
           set -x
-          [ -n "$REQ_VPS_HOST" ] || { echo "::error::Missing VPS_HOST"; exit 1; }
-          [ -n "$REQ_VPS_USERNAME" ] || { echo "::error::Missing VPS_USERNAME"; exit 1; }
-          [ -n "$REQ_VPS_SSH_KEY" ] || { echo "::error::Missing VPS_SSH_KEY"; exit 1; }
+          [ -n "$VPS_HOST" ] || { echo "::error::Missing VPS_HOST"; exit 1; }
+          [ -n "$VPS_USERNAME" ] || { echo "::error::Missing VPS_USERNAME"; exit 1; }
+          [ -n "$VPS_SSH_KEY" ] || { echo "::error::Missing VPS_SSH_KEY"; exit 1; }
           if [ -z "$DKR_USER" ] || [ -z "$DKR_TOKEN" ]; then
-            echo "::warning::Docker Hub creds not set. Assuming public image."
+            echo "::warning::Docker Hub credentials not set. Using public images."
           fi
-          echo "Secrets OK ✅"
+          echo "Secrets validated ✅"
 
       - name: Pack infra as tarball
         run: |
@@ -47,7 +47,7 @@ jobs:
           tar -czf infra.tar.gz -C infra .
           ls -lah infra.tar.gz
 
-      - name: SSH Hello (connectivity check)
+      - name: SSH connectivity check
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -63,7 +63,7 @@ jobs:
             whoami
             uname -a
 
-      - name: Prep /opt/app on VPS
+      - name: Prepare /opt/app on VPS
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -80,7 +80,7 @@ jobs:
             sudo chown -R "$USER:$USER" /opt/app
             ls -lah /opt/app || true
 
-      - name: Copy tarball to VPS (scp)
+      - name: Copy tarball to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -146,12 +146,12 @@ jobs:
             sudo docker --version
             sudo docker compose version || true
 
-            # Docker Hub login (only if private image)
+            # Docker Hub login (if private)
             if [ -n "${DKR_USER:-}" ] && [ -n "${DKR_TOKEN:-}" ]; then
               echo "$DKR_TOKEN" | sudo docker login -u "$DKR_USER" --password-stdin
             fi
 
-            # Replace image placeholder if present
+            # Replace placeholder image if exists
             if grep -q "__DOCKER_HUB_IMAGE__" docker-compose.yml; then
               if [ -n "${DKR_USER:-}" ]; then
                 sudo sed -i "s|__DOCKER_HUB_IMAGE__|$DKR_USER/admin-app:latest|g" docker-compose.yml
@@ -160,21 +160,21 @@ jobs:
               fi
             fi
 
-            # Validate compose BEFORE starting
+            # Validate docker-compose before start
             sudo docker compose -f docker-compose.yml config
 
-            # 🧹 FULL CLEANUP to avoid duplicate upstreams
+            # 🔹 FULL CLEANUP to avoid duplicate upstreams
             sudo docker compose down --remove-orphans
             sudo docker system prune -af
             sudo rm -f nginx/conf.d/upstreams.generated.conf || true
 
-            # Start nginx + one app first
+            # Start nginx + first app
             sudo docker compose up -d nginx express-app-admin-1
 
-            # Validate nginx config in fresh container
+            # Validate nginx config
             sudo docker compose run --rm nginx nginx -t
 
-            # Optional upstream rendering script
+            # Render upstreams safely
             if [ -f scripts/render_upstream.sh ]; then
               sudo chmod +x scripts/render_upstream.sh
               sudo bash scripts/render_upstream.sh
@@ -183,10 +183,10 @@ jobs:
             # Start remaining replicas
             sudo docker compose up -d express-app-admin-2 express-app-admin-3
 
-            # Reload Nginx safely
+            # Reload nginx safely
             sudo docker compose exec -T nginx nginx -s reload
 
-            # Health probe
+            # Health check
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
 
             echo "Deployment complete ✅ (HTTP only)"
