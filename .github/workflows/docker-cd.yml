@@ -4,10 +4,10 @@ on:
   workflow_run:
     workflows: ["Docker CI"]
     types: [completed]
-  workflow_dispatch: {}   # manual trigger for testing
+  workflow_dispatch: {}  # manual trigger for testing
 
 concurrency:
-  group: docker-cd-${{ github.ref }}
+  group: "docker-cd-${{ github.ref }}"
   cancel-in-progress: true
 
 jobs:
@@ -92,7 +92,7 @@ jobs:
             set -Eeuo pipefail
             set -x
             sudo mkdir -p /opt/app
-            sudo chown -R $USER:$USER /opt/app
+            sudo chown -R "$USER:$USER" /opt/app
             ls -lah /opt/app || true
 
       # Copy to VPS; flatten "infra/" into /opt/app/
@@ -105,8 +105,11 @@ jobs:
           port: 22
           overwrite: true
           debug: true
-          source: "infra/docker-compose.yml,infra/nginx/**,infra/scripts/**"
-          target: "/opt/app/"
+          source: |
+            infra/docker-compose.yml
+            infra/nginx/**
+            infra/scripts/**
+          target: /opt/app/
           strip_components: 1
 
       - name: Deploy via SSH (HTTP only)
@@ -118,9 +121,7 @@ jobs:
           port: 22
           debug: true
           script_stop: true
-          env:
-            DKR_USER: ${{ secrets.DOCKER_HUB_USERNAME }}
-            DKR_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+          envs: DKR_USER,DKR_TOKEN
           script: |
             set -Eeuo pipefail
             set -x
@@ -136,20 +137,20 @@ jobs:
             if ! command -v docker >/dev/null 2>&1; then
               echo "Installing Docker..."
               curl -fsSL https://get.docker.com | sh
-              sudo usermod -aG docker $USER || true
+              sudo usermod -aG docker "$USER" || true
             fi
             sudo systemctl enable --now docker || true
             sudo docker --version
             sudo docker compose version || true
 
             # Docker Hub login (only if private image)
-            if [ -n "$DKR_USER" ] && [ -n "$DKR_TOKEN" ]; then
+            if [ -n "${DKR_USER:-}" ] && [ -n "${DKR_TOKEN:-}" ]; then
               echo "$DKR_TOKEN" | sudo docker login -u "$DKR_USER" --password-stdin
             fi
 
             # Replace image placeholder if present
             if grep -q "__DOCKER_HUB_IMAGE__" docker-compose.yml; then
-              if [ -n "$DKR_USER" ]; then
+              if [ -n "${DKR_USER:-}" ]; then
                 sudo sed -i "s|__DOCKER_HUB_IMAGE__|$DKR_USER/admin-app:latest|g" docker-compose.yml
               else
                 echo "::warning::__DOCKER_HUB_IMAGE__ found but DOCKER_HUB_USERNAME is empty"
@@ -181,3 +182,4 @@ jobs:
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding (ensure route exists)"
 
             echo "Deployment complete ✅ (HTTP only)"
+
