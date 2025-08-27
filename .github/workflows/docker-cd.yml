@@ -162,13 +162,17 @@ jobs:
             # Validate compose BEFORE starting
             sudo docker compose -f docker-compose.yml config
 
+            # 🧹 Clean old state (avoid duplicate upstreams)
+            sudo docker compose down --remove-orphans
+            sudo rm -f nginx/conf.d/upstreams.generated.conf || true
+
             # Start nginx + one app first
             sudo docker compose up -d nginx express-app-admin-1
 
-            # FIX: validate nginx config safely (no exec race)
+            # Validate nginx config in fresh container
             sudo docker compose run --rm nginx nginx -t
 
-            # Optional upstream rendering script (if present)
+            # Optional upstream rendering script
             if [ -f scripts/render_upstream.sh ]; then
               sudo chmod +x scripts/render_upstream.sh
               sudo bash scripts/render_upstream.sh || true
@@ -184,4 +188,5 @@ jobs:
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding (ensure route exists)"
 
             echo "Deployment complete ✅ (HTTP only)"
+
 
