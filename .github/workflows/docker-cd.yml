@@ -1,4 +1,3 @@
-
 name: Docker CD
 
 on:
@@ -14,7 +13,6 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Server
-    # Run when CI succeeded OR when manually triggered
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
@@ -41,15 +39,6 @@ jobs:
             echo "::warning::Docker Hub creds not set. Assuming public image."
           fi
           echo "Secrets OK ✅"
-
-      # - name: Guard: ensure infra exists in repo
-      #   run: |
-      #     set -Eeuo pipefail
-      #     set -x
-      #     test -d infra || { echo "::error::infra/ not found at repo root"; exit 1; }
-      #     test -f infra/docker-compose.yml || { echo "::error::infra/docker-compose.yml missing"; exit 1; }
-      #     test -f infra/nginx/nginx.conf || { echo "::error::infra/nginx/nginx.conf missing"; exit 1; }
-      #     test -d infra/nginx/conf.d || { echo "::error::infra/nginx/conf.d missing"; exit 1; }
 
       - name: Pack infra as tarball
         run: |
@@ -173,11 +162,11 @@ jobs:
             # Validate compose BEFORE starting
             sudo docker compose -f docker-compose.yml config
 
-            # Start nginx + one app first (lets nginx come up quickly)
+            # Start nginx + one app first
             sudo docker compose up -d nginx express-app-admin-1
 
-            # Validate Nginx config inside the container
-            sudo docker compose exec -T nginx nginx -t
+            # FIX: validate nginx config safely (no exec race)
+            sudo docker compose run --rm nginx nginx -t
 
             # Optional upstream rendering script (if present)
             if [ -f scripts/render_upstream.sh ]; then
@@ -188,10 +177,11 @@ jobs:
             # Start remaining replicas
             sudo docker compose up -d express-app-admin-2 express-app-admin-3
 
-            # Reload Nginx
+            # Reload Nginx safely
             sudo docker compose exec -T nginx nginx -s reload || true
 
-            # Health probe (adjust path if your app doesn't expose /health)
+            # Health probe
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding (ensure route exists)"
 
             echo "Deployment complete ✅ (HTTP only)"
+
