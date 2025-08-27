@@ -11,17 +11,16 @@ APP_PORT="${APP_PORT:-5000}"
 DOCKER="sudo docker"
 DCOMPOSE="sudo docker compose -f $APP_DIR/docker-compose.yml"
 
-# --- Ensure old file is removed before generating ---
+# --- Remove old file before generating ---
 rm -f "$OUT_FILE"
 
-# --- Discover container IPs on the intended network ---
-mapfile -t CID_NAME <<<"$($DOCKER ps --format '{{.ID}} {{.Names}}' | awk -v p="$SERVICE_PREFIX" '$2 ~ "^"p"-" {print $0}')"
+# --- Discover running container IPs on the intended network ---
+mapfile -t CID_NAME <<<"$($DOCKER ps --filter "name=$SERVICE_PREFIX" --filter "status=running" --format '{{.ID}} {{.Names}}')"
 
 IPS=()
 for row in "${CID_NAME[@]}"; do
   cid="${row%% *}"
   ip="$($DOCKER inspect -f "{{ with index .NetworkSettings.Networks \"$NETWORK_NAME\" }}{{ .IPAddress }}{{ end }}" "$cid")"
-  [[ -z "$ip" ]] && ip="$($DOCKER inspect -f '{{ range .NetworkSettings.Networks }}{{ .IPAddress }}{{ end }}' "$cid")"
   [[ -n "$ip" ]] && IPS+=("$ip")
 done
 
