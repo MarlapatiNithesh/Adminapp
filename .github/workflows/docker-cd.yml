@@ -75,6 +75,7 @@ jobs:
           script: |
             set -Eeuo pipefail
             set -x
+            sudo rm -rf /opt/app/* || true
             sudo mkdir -p /opt/app
             sudo chown -R "$USER:$USER" /opt/app
             ls -lah /opt/app || true
@@ -162,8 +163,9 @@ jobs:
             # Validate compose BEFORE starting
             sudo docker compose -f docker-compose.yml config
 
-            # 🧹 Clean old state (avoid duplicate upstreams)
+            # 🧹 FULL CLEANUP to avoid duplicate upstreams
             sudo docker compose down --remove-orphans
+            sudo docker system prune -af
             sudo rm -f nginx/conf.d/upstreams.generated.conf || true
 
             # Start nginx + one app first
@@ -175,18 +177,17 @@ jobs:
             # Optional upstream rendering script
             if [ -f scripts/render_upstream.sh ]; then
               sudo chmod +x scripts/render_upstream.sh
-              sudo bash scripts/render_upstream.sh || true
+              sudo bash scripts/render_upstream.sh
             fi
 
             # Start remaining replicas
             sudo docker compose up -d express-app-admin-2 express-app-admin-3
 
             # Reload Nginx safely
-            sudo docker compose exec -T nginx nginx -s reload || true
+            sudo docker compose exec -T nginx nginx -s reload
 
             # Health probe
-            curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding (ensure route exists)"
+            curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
 
             echo "Deployment complete ✅ (HTTP only)"
-
 
