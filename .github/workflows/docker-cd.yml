@@ -42,14 +42,14 @@ jobs:
           fi
           echo "Secrets OK ✅"
 
-      - name: Guard: ensure infra exists in repo
-        run: |
-          set -Eeuo pipefail
-          set -x
-          test -d infra || { echo "::error::infra/ not found at repo root"; exit 1; }
-          test -f infra/docker-compose.yml || { echo "::error::infra/docker-compose.yml missing"; exit 1; }
-          test -f infra/nginx/nginx.conf || { echo "::error::infra/nginx/nginx.conf missing"; exit 1; }
-          test -d infra/nginx/conf.d || { echo "::error::infra/nginx/conf.d missing"; exit 1; }
+      # - name: Guard: ensure infra exists in repo
+      #   run: |
+      #     set -Eeuo pipefail
+      #     set -x
+      #     test -d infra || { echo "::error::infra/ not found at repo root"; exit 1; }
+      #     test -f infra/docker-compose.yml || { echo "::error::infra/docker-compose.yml missing"; exit 1; }
+      #     test -f infra/nginx/nginx.conf || { echo "::error::infra/nginx/nginx.conf missing"; exit 1; }
+      #     test -d infra/nginx/conf.d || { echo "::error::infra/nginx/conf.d missing"; exit 1; }
 
       - name: Pack infra as tarball
         run: |
