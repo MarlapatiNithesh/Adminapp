@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   nginx:
     image: "nginx:1.25"
@@ -21,8 +23,8 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://localhost/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 10
-      start_period: 60s
+      retries: 20
+      start_period: 120s
     stop_grace_period: 10s
     networks: [app-net]
 
@@ -37,11 +39,11 @@ services:
     expose:
       - "5000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:5000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://0.0.0.0:5000/health || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 20
-      start_period: 90s
+      retries: 30
+      start_period: 120s
     stop_grace_period: 10s
     networks: [app-net]
 
@@ -56,11 +58,11 @@ services:
     expose:
       - "5000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:5000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://0.0.0.0:5000/health || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 20
-      start_period: 90s
+      retries: 30
+      start_period: 120s
     stop_grace_period: 10s
     networks: [app-net]
 
@@ -75,11 +77,11 @@ services:
     expose:
       - "5000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:5000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://0.0.0.0:5000/health || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 20
-      start_period: 90s
+      retries: 30
+      start_period: 120s
     stop_grace_period: 10s
     networks: [app-net]
 
