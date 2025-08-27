@@ -33,7 +33,7 @@ jobs:
             infra/scripts/**
           target: /opt/app/
 
-      - name: Deploy via SSH (docker compose, nginx, 3 replicas)
+      - name: Deploy via SSH (docker compose + 3 replicas + optional TLS)
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -47,40 +47,39 @@ jobs:
             echo "Starting deployment…"
             cd /opt/app
 
-            # Ensure docker & compose exist
+            # Ensure Docker & compose
             docker --version
             docker compose version
 
-            # Optional: Login to Docker Hub if your repo is private
+            # Login to Docker Hub if repo is private (optional)
             if [ -n "${{ secrets.DOCKER_HUB_ACCESS_TOKEN || '' }}" ]; then
               echo "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" | docker login \
                 -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
             fi
 
-            # Substitute your Docker Hub image into compose (if your compose uses a placeholder)
-            # This replaces __DOCKER_HUB_IMAGE__ with <username>/admin-app:latest
-            if grep -q "__DOCKER_HUB_IMAGE__" docker-compose.yml; then
+            # If your compose uses a placeholder for the image, replace it
+            # Example placeholder: __DOCKER_HUB_IMAGE__
+            if [ -f docker-compose.yml ] && grep -q "__DOCKER_HUB_IMAGE__" docker-compose.yml; then
               sed -i "s|__DOCKER_HUB_IMAGE__|${{ secrets.DOCKER_HUB_USERNAME }}/admin-app:latest|g" docker-compose.yml
             fi
 
-            # If you passed DOMAIN as a secret, stamp it into nginx vhost
+            # If you pass a DOMAIN secret, stamp it into nginx vhost once
             if [ -n "${{ secrets.DOMAIN || '' }}" ]; then
               sed -i "s/api\\.example\\.com/${{ secrets.DOMAIN }}/g" nginx/conf.d/app.conf || true
               sed -i "s/www\\.api\\.example\\.com/www.${{ secrets.DOMAIN }}/g" nginx/conf.d/app.conf || true
             fi
 
-            # Pull the latest images referenced by compose
+            # Pull latest images referenced by compose (ignores local build if image set)
             docker compose pull || true
 
-            # Bring up Nginx and a single app first (so HTTP-01 challenge can work on first run)
-            # If you don't use TLS, it's still fine.
+            # Start Nginx and at least one app for HTTP (and ACME challenge if using TLS)
             docker compose up -d nginx express-app-admin-1
 
-            # If DOMAIN is set, try issuing TLS certs on first run (skips if already present)
+            # FIRST RUN ONLY: Issue Let's Encrypt certs if DOMAIN provided
             if [ -n "${{ secrets.DOMAIN || '' }}" ]; then
               CERT_BASE="/var/lib/docker/volumes/infra_certbot-certs/_data/live/${{ secrets.DOMAIN }}"
               if [ ! -d "$CERT_BASE" ]; then
-                echo "Issuing Let's Encrypt cert for ${{ secrets.DOMAIN }}…"
+                echo "Issuing TLS cert for ${{ secrets.DOMAIN }}…"
                 docker compose run --rm certbot certbot certonly \
                   --webroot -w /var/www/certbot \
                   -d "${{ secrets.DOMAIN }}" -d "www.${{ secrets.DOMAIN }}" \
@@ -89,10 +88,10 @@ jobs:
               fi
             fi
 
-            # Start / update all three app replicas
+            # Ensure all three replicas are up
             docker compose up -d express-app-admin-1 express-app-admin-2 express-app-admin-3
 
-            # Reload Nginx (and optionally render upstreams if you use a script)
+            # If you use a dynamic upstreams script, run it; else just reload Nginx
             if [ -f scripts/render_upstream.sh ]; then
               chmod +x scripts/render_upstream.sh
               bash scripts/render_upstream.sh || docker compose exec -T nginx nginx -s reload || true
