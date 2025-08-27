@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   nginx:
-    image: nginx:1.25
+    image: "nginx:1.25"
     container_name: nginx
     restart: unless-stopped
     depends_on:
@@ -13,11 +13,23 @@ services:
       - "80:80"
       # - "443:443"   # enable when certs ready
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-      - nginx_cache:/var/cache/nginx
+      - type: bind
+        source: ./nginx/conf.d
+        target: /etc/nginx/conf.d
+        read_only: true
+      - type: bind
+        source: ./nginx/nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+      - type: volume
+        source: letsencrypt
+        target: /etc/letsencrypt
+      - type: volume
+        source: certbot_www
+        target: /var/www/certbot
+      - type: volume
+        source: nginx_cache
+        target: /var/cache/nginx
     networks:
       - app-net
 
@@ -76,12 +88,16 @@ services:
       start_period: 10s
 
   certbot:
-    image: certbot/certbot:latest
-    entrypoint: sh
-    command: -c "trap : TERM INT; sleep infinity"
+    image: "certbot/certbot:latest"
+    entrypoint: "sh"
+    command: ["-c", "trap : TERM INT; sleep infinity"]
     volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
+      - type: volume
+        source: letsencrypt
+        target: /etc/letsencrypt
+      - type: volume
+        source: certbot_www
+        target: /var/www/certbot
     networks:
       - app-net
 
@@ -90,10 +106,9 @@ networks:
     driver: bridge
 
 volumes:
-  letsencrypt:
-  certbot_www:
-  nginx_cache:
-
+  letsencrypt: {}
+  certbot_www: {}
+  nginx_cache: {}
 
 
 
