@@ -13,7 +13,10 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # conf.d must be writable for generated upstreams
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      # app.conf can remain read-only
+      - ./nginx/conf.d/app.conf:/etc/nginx/conf.d/app.conf:ro
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - nginx_cache:/var/cache/nginx
     healthcheck:
@@ -88,4 +91,3 @@ networks:
 
 volumes:
   nginx_cache: {}
-
