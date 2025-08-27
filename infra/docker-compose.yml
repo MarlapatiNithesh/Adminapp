@@ -34,7 +34,7 @@ services:
       - app-net
 
   express-app-admin-1:
-    image: "niteesh2005/admin-app:latest"
+    image: "nitheesh2005/admin-app:latest"
     container_name: express-app-admin-1
     restart: unless-stopped
     environment:
@@ -52,7 +52,7 @@ services:
       start_period: 10s
 
   express-app-admin-2:
-    image: "niteesh2005/admin-app:latest"
+    image: "nitheesh2005/admin-app:latest"
     container_name: express-app-admin-2
     restart: unless-stopped
     environment:
@@ -70,7 +70,7 @@ services:
       start_period: 10s
 
   express-app-admin-3:
-    image: "niteesh2005/admin-app:latest"
+    image: "nitheesh2005/admin-app:latest"
     container_name: express-app-admin-3
     restart: unless-stopped
     environment:
