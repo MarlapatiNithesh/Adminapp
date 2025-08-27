@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   nginx:
     image: "nginx:1.25"
@@ -8,11 +6,11 @@ services:
     restart: unless-stopped
     depends_on:
       express-app-admin-1:
-        condition: service_healthy
+        condition: service_started
       express-app-admin-2:
-        condition: service_healthy
+        condition: service_started
       express-app-admin-3:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "80:80"
       # - "443:443"   # enable when certs ready
@@ -36,7 +34,7 @@ services:
         source: certbot_www
         target: /var/www/certbot
     healthcheck:
-      test: ["CMD-SHELL", "nginx -t || exit 1"]
+      test: ["CMD-SHELL", "nginx -t -q || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -53,18 +51,19 @@ services:
       NODE_ENV: "production"
       PORT: "5000"
     expose: ["5000"]
-    # Use ONE of the healthcheck variants below that your image supports.
     healthcheck:
-      # Variant A: wget (BusyBox/Wget present in many images)
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health >/dev/null 2>&1 || exit 1"]
-      # Variant B: curl (if your image actually has curl)
-      # test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5000/health >/dev/null || exit 1"]
-      # Variant C: netcat (nc) if no curl/wget available
-      # test: ["CMD-SHELL", "nc -z 127.0.0.1 5000 || exit 1"]
+      test:
+        - CMD-SHELL
+        - >
+          node -e "
+            const http=require('http');
+            const req=http.get('http://127.0.0.1:5000/health',res=>process.exit(res.statusCode===200?0:1));
+            req.on('error',()=>process.exit(1));
+          "
       interval: 15s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 20
+      start_period: 40s
     stop_grace_period: 10s
     networks: [app-net]
 
@@ -78,11 +77,18 @@ services:
       PORT: "5000"
     expose: ["5000"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health >/dev/null 2>&1 || exit 1"]
+      test:
+        - CMD-SHELL
+        - >
+          node -e "
+            const http=require('http');
+            const req=http.get('http://127.0.0.1:5000/health',res=>process.exit(res.statusCode===200?0:1));
+            req.on('error',()=>process.exit(1));
+          "
       interval: 15s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 20
+      start_period: 40s
     stop_grace_period: 10s
     networks: [app-net]
 
@@ -96,27 +102,34 @@ services:
       PORT: "5000"
     expose: ["5000"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/health >/dev/null 2>&1 || exit 1"]
+      test:
+        - CMD-SHELL
+        - >
+          node -e "
+            const http=require('http');
+            const req=http.get('http://127.0.0.1:5000/health',res=>process.exit(res.statusCode===200?0:1));
+            req.on('error',()=>process.exit(1));
+          "
       interval: 15s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 20
+      start_period: 40s
     stop_grace_period: 10s
     networks: [app-net]
 
-  # Keep this commented while you're on HTTP-only.
-  certbot:
-    image: "certbot/certbot:latest"
-    entrypoint: "sh"
-    command: ["-c", "trap : TERM INT; sleep infinity"]
-    volumes:
-      - type: volume
-        source: letsencrypt
-        target: /etc/letsencrypt
-      - type: volume
-        source: certbot_www
-        target: /var/www/certbot
-    networks: [app-net]
+  # HTTP-only: leave certbot disabled (uncomment when moving to HTTPS)
+  # certbot:
+  #   image: "certbot/certbot:latest"
+  #   entrypoint: "sh"
+  #   command: ["-c", "trap : TERM INT; sleep infinity"]
+  #   volumes:
+  #     - type: volume
+  #       source: letsencrypt
+  #       target: /etc/letsencrypt
+  #     - type: volume
+  #       source: certbot_www
+  #       target: /var/www/certbot
+  #   networks: [app-net]
 
 networks:
   app-net:
@@ -126,7 +139,6 @@ volumes:
   letsencrypt: {}
   certbot_www: {}
   nginx_cache: {}
-
 
 
 
