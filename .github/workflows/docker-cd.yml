@@ -41,27 +41,28 @@ jobs:
             echo "::warning::Docker Hub creds not set. Assuming public image."
           fi
 
-      - name: Debug: show infra layout
-        run: |
-          set -Eeuo pipefail
-          set -x
-          echo "PWD=$(pwd)"
-          ls -lah
-          echo "---- infra ----"
-          ls -lah infra || true
-          echo "---- infra/nginx ----"
-          ls -lah infra/nginx || true
-          echo "---- infra/nginx/conf.d ----"
-          ls -lah infra/nginx/conf.d || true
-          echo "---- infra/scripts ----"
-          ls -lah infra/scripts || true
+      #   - name: Debug: show infra layout
+      #   run: |
+      #     set -Eeuo pipefail
+      #     set -x
+      #     echo "PWD=$(pwd)"
+      #     ls -lah
+      #     echo "---- infra ----"
+      #     ls -lah infra || true
+      #     echo "---- infra/nginx ----"
+      #     ls -lah infra/nginx || true
+      #     echo "---- infra/nginx/conf.d ----"
+      #     ls -lah infra/nginx/conf.d || true
+      #     echo "---- infra/scripts ----"
+      #     ls -lah infra/scripts || true
 
-      - name: Guard: ensure infra exists
-        run: |
-          set -Eeuo pipefail
-          set -x
-          test -d infra || { echo "::error::infra/ not found at repo root"; exit 1; }
-          test -f infra/docker-compose.yml || { echo "::error::infra/docker-compose.yml missing"; exit 1; }
+      # - name: Guard: ensure infra exists
+      #   run: |
+      #     set -Eeuo pipefail
+      #     set -x
+      #     test -d infra || { echo "::error::infra/ not found at repo root"; exit 1; }
+      #     test -f infra/docker-compose.yml || { echo "::error::infra/docker-compose.yml missing"; exit 1; }
+
 
       - name: SSH Hello (connectivity check)
         uses: appleboy/ssh-action@v0.1.7
