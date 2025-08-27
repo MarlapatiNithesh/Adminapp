@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows: ["Docker CI"]
     types: [completed]
+  workflow_dispatch: {}   # manual trigger for testing
 
 concurrency:
   group: docker-cd-${{ github.ref }}
@@ -12,7 +13,8 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Server
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    # Run when CI succeeded OR when manually triggered
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,22 +27,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           set -x
-          req=(VPS_HOST VPS_USERNAME VPS_SSH_KEY)
-          for k in "${req[@]}"; do
-            v="${{ secrets.VPS_HOST }}"
-            case "$k" in
-              VPS_USERNAME) v="${{ secrets.VPS_USERNAME }}";;
-              VPS_SSH_KEY)  v="${{ secrets.VPS_SSH_KEY }}";;
-            esac
-            if [ -z "$v" ]; then
-              echo "::error::Missing required secret: $k"
-              exit 1
-            fi
-          done
-          echo "All required secrets present ✅"
-          # Optional Docker Hub creds
+          : "${{ secrets.VPS_HOST?Missing VPS_HOST }}"
+          : "${{ secrets.VPS_USERNAME?Missing VPS_USERNAME }}"
+          : "${{ secrets.VPS_SSH_KEY?Missing VPS_SSH_KEY }}"
+          echo "Secrets OK ✅"
           if [ -z "${{ secrets.DOCKER_HUB_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" ]; then
-            echo "::warning::Docker Hub credentials not set. Will assume public image."
+            echo "::warning::Docker Hub creds not set. Assuming public image."
           fi
 
       - name: Debug: show infra layout
@@ -65,7 +57,6 @@ jobs:
           test -d infra || (echo "::error::infra/ not found at repo root" && exit 1)
           test -f infra/docker-compose.yml || (echo "::error::infra/docker-compose.yml missing" && exit 1)
 
-      # Quick connectivity test — if this fails, it's your SSH creds/host/port
       - name: SSH Hello (connectivity check)
         uses: appleboy/ssh-action@v0.1.7
         with:
@@ -78,9 +69,10 @@ jobs:
           script: |
             set -Eeuo pipefail
             set -x
-            echo "SSH OK on $(hostname)"; whoami; uname -a
+            echo "SSH OK on $(hostname)"
+            whoami
+            uname -a
 
-      # Prep remote directory & perms
       - name: Prep /opt/app
         uses: appleboy/ssh-action@v0.1.7
         with:
@@ -97,7 +89,7 @@ jobs:
             sudo chown -R $USER:$USER /opt/app
             ls -lah /opt/app || true
 
-      # Copy to VPS; flatten "infra/" into /opt/app
+      # Copy to VPS; flatten "infra/" into /opt/app/
       - name: Copy infra to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -156,10 +148,10 @@ jobs:
               fi
             fi
 
-            # Validate compose file BEFORE starting
+            # Validate compose BEFORE starting
             sudo docker compose -f docker-compose.yml config
 
-            # Bring up nginx + a single app (first)
+            # Start nginx + one app first
             sudo docker compose up -d nginx express-app-admin-1
 
             # Validate Nginx config inside the container
@@ -177,7 +169,7 @@ jobs:
             # Reload Nginx
             sudo docker compose exec -T nginx nginx -s reload || true
 
-            # Health probe
+            # Health probe (adjust path if needed)
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding (ensure route exists)"
 
             echo "Deployment complete ✅ (HTTP only)"
