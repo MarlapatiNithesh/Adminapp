@@ -43,7 +43,7 @@ jobs:
           test -d infra || (echo "::error::infra/ not found at repo root" && exit 1)
           test -f infra/docker-compose.yml || (echo "::error::infra/docker-compose.yml missing" && exit 1)
 
-      - name: Smoke test SSH + remote dir
+      - name: Smoke test SSH + prep /opt/app
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -55,8 +55,6 @@ jobs:
           script: |
             set -Eeuo pipefail
             set -x
-            whoami
-            uname -a
             sudo mkdir -p /opt/app
             sudo chown -R $USER:$USER /opt/app
             ls -lah /opt/app || true
@@ -75,7 +73,7 @@ jobs:
           target: "/opt/app/"
           strip_components: 1
 
-      - name: Deploy via SSH (docker compose + 3 replicas + optional TLS)
+      - name: Deploy via SSH (docker compose + 3 replicas, HTTP only)
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -105,45 +103,29 @@ jobs:
             sudo docker --version
             sudo docker compose version || true
 
-            # Docker Hub login (only if private)
-            if [ -n "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" ]; then
+            # Docker Hub login (only if private image)
+            if [ -n "${{ secrets.DOCKER_HUB_ACCESS_TOKEN || '' }}" ]; then
               echo "${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" | sudo docker login \
                 -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
             fi
 
-            # Replace image placeholder in compose
+            # Replace image placeholder in compose if present
             if grep -q "__DOCKER_HUB_IMAGE__" docker-compose.yml; then
               sudo sed -i "s|__DOCKER_HUB_IMAGE__|${{ secrets.DOCKER_HUB_USERNAME }}/admin-app:latest|g" docker-compose.yml
             fi
 
-            # Inject domain into nginx vhost (HTTPS only works with a real domain)
-            if [ -n "${{ secrets.DOMAIN }}" ]; then
-              sudo sed -i "s/DOMAIN_PLACEHOLDER/${{ secrets.DOMAIN }}/g" nginx/conf.d/app.conf || true
-              sudo sed -i "s/www.DOMAIN_PLACEHOLDER/www.${{ secrets.DOMAIN }}/g" nginx/conf.d/app.conf || true
-            fi
+            # HTTP only: ensure app.conf isn't forcing HTTPS (no certbot/DOMAIN here)
 
-            # Pull latest images referenced by compose (non-fatal if first run)
+            # Pull latest images (non-fatal on first run)
             sudo docker compose pull || true
 
-            # Start nginx + one app first (for ACME http-01 if we use TLS)
+            # Start nginx + one app first
             sudo docker compose up -d nginx express-app-admin-1
 
-            # Optional: generate upstreams
+            # Optional Nginx upstream rendering
             if [ -f scripts/render_upstream.sh ]; then
               sudo chmod +x scripts/render_upstream.sh
               sudo bash scripts/render_upstream.sh || true
-            fi
-
-            # First-run certs (skipped if DOMAIN unset). Let's Encrypt won't issue for raw IPs.
-            if [ -n "${{ secrets.DOMAIN }}" ]; then
-              if ! sudo docker compose exec -T nginx sh -c "test -f /etc/letsencrypt/live/${{ secrets.DOMAIN }}/fullchain.pem"; then
-                echo "Issuing TLS cert for ${{ secrets.DOMAIN }}…"
-                sudo docker compose run --rm certbot certbot certonly \
-                  --webroot -w /var/www/certbot \
-                  -d "${{ secrets.DOMAIN }}" -d "www.${{ secrets.DOMAIN }}" \
-                  --email "${{ secrets.LETSENCRYPT_EMAIL }}" --agree-tos --no-eff-email || true
-                sudo docker compose restart nginx || true
-              fi
             fi
 
             # Bring up all replicas
@@ -156,4 +138,4 @@ jobs:
               sudo docker compose exec -T nginx nginx -s reload || true
             fi
 
-            echo "Deployment complete ✅"
+            echo "Deployment complete ✅ (HTTP only)"
