@@ -22,7 +22,7 @@ services:
       - app-net
 
   express-app-admin-1:
-    image: "__DOCKER_HUB_IMAGE__"
+    image: "niteesh2005/admin-app:latest"
     container_name: express-app-admin-1
     restart: unless-stopped
     environment:
@@ -40,7 +40,7 @@ services:
       start_period: 10s
 
   express-app-admin-2:
-    image: "__DOCKER_HUB_IMAGE__"
+    image: "niteesh2005/admin-app:latest"
     container_name: express-app-admin-2
     restart: unless-stopped
     environment:
@@ -58,7 +58,7 @@ services:
       start_period: 10s
 
   express-app-admin-3:
-    image: "__DOCKER_HUB_IMAGE__"
+    image: "niteesh2005/admin-app:latest"
     container_name: express-app-admin-3
     restart: unless-stopped
     environment:
