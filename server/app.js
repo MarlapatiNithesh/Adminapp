@@ -16,31 +16,38 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
 });
 
-
-
-// Routes
+// Root endpoint
 app.get('/', (req, res) => {
   res.status(200).json({ message: 'Welcome to the API' });
 });
 
+// API routes
 app.use('/admin', adminRoutes);
 app.use('/subadmin', subadminRoutes);
 
-// 404 handler
+// 404 handler (must be after routes)
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found', path: req.originalUrl });
 });
 
-// Error handler (keep LAST)
+// Error handler (must be LAST)
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ message: 'Internal Server Error' });
 });
 
-// Start server
+// Start server (listen on 0.0.0.0 for Docker container)
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
+});
+
