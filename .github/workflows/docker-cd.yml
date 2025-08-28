@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Docker CI"]
     types: [completed]
-  workflow_dispatch: {}
+  workflow_dispatch: {}   # allow manual runs for testing
 
 concurrency:
   group: "docker-cd-${{ github.ref }}"
@@ -42,6 +42,21 @@ jobs:
           tar -czf infra.tar.gz -C infra .
           ls -lah infra.tar.gz
 
+      - name: SSH connectivity check
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script_stop: true
+          debug: true
+          script: |
+            set -Eeuo pipefail
+            echo "SSH OK on $(hostname)"
+            whoami
+            uname -a
+
       - name: Prepare /opt/app on VPS
         uses: appleboy/ssh-action@v0.1.7
         with:
@@ -53,7 +68,7 @@ jobs:
           debug: true
           script: |
             set -Eeuo pipefail
-            sudo rm -rf /opt/app/*
+            sudo rm -rf /opt/app/* || true
             sudo mkdir -p /opt/app
             sudo chown -R "$USER:$USER" /opt/app
 
@@ -117,7 +132,7 @@ jobs:
             sudo docker --version
             sudo docker compose version || true
 
-            # Docker Hub login
+            # Docker Hub login (if credentials provided)
             if [ -n "${DKR_USER:-}" ] && [ -n "${DKR_TOKEN:-}" ]; then
               echo "$DKR_TOKEN" | sudo docker login -u "$DKR_USER" --password-stdin
             fi
@@ -131,31 +146,40 @@ jobs:
             sudo docker compose -f docker-compose.yml config
 
             # 🔹 FULL CLEANUP: stop/remove old containers
-            echo "Stopping old admin-app containers..."
-            sudo docker ps -aq --filter "name=express-app-admin" | xargs -r sudo docker rm -f
+            echo "Stopping and removing old admin-app containers..."
+            sudo docker ps -aq --filter "name=admin-app" | xargs -r sudo docker rm -f
             sudo docker ps -aq --filter "ancestor=admin-app" | xargs -r sudo docker rm -f
-            [ -n "${DKR_USER:-}" ] && sudo docker ps -aq --filter "ancestor=$DKR_USER/admin-app:latest" | xargs -r sudo docker rm -f
+            if [ -n "${DKR_USER:-}" ]; then
+              sudo docker ps -aq --filter "ancestor=$DKR_USER/admin-app:latest" | xargs -r sudo docker rm -f
+            fi
 
             # 🔹 Remove old images
             echo "Removing old/untagged images..."
             sudo docker images -q --filter "dangling=true" | xargs -r sudo docker rmi -f
             sudo docker rmi -f $(sudo docker images -q admin-app) || true
-            [ -n "${DKR_USER:-}" ] && sudo docker rmi -f "$DKR_USER/admin-app:latest" || true
+            if [ -n "${DKR_USER:-}" ]; then
+              sudo docker rmi -f "$DKR_USER/admin-app:latest" || true
+            fi
 
             # 🔹 Pull latest image
-            [ -n "${DKR_USER:-}" ] && sudo docker pull "$DKR_USER/admin-app:latest"
+            if [ -n "${DKR_USER:-}" ]; then
+              sudo docker pull "$DKR_USER/admin-app:latest"
+            fi
 
-            # Start nginx + first app with force recreate
-            sudo docker compose up -d --force-recreate --pull always nginx express-app-admin-1
+            # Start nginx + first app
+            sudo docker compose up -d nginx express-app-admin-1
 
             # Validate nginx config
             sudo docker compose run --rm nginx nginx -t
 
             # Render upstreams safely
-            [ -f scripts/render_upstream.sh ] && sudo bash scripts/render_upstream.sh
+            if [ -f scripts/render_upstream.sh ]; then
+              sudo chmod +x scripts/render_upstream.sh
+              sudo bash scripts/render_upstream.sh
+            fi
 
             # Start remaining replicas
-            sudo docker compose up -d --force-recreate --pull always express-app-admin-2 express-app-admin-3
+            sudo docker compose up -d express-app-admin-2 express-app-admin-3
 
             # Reload nginx safely
             sudo docker compose exec -T nginx nginx -s reload
@@ -164,7 +188,6 @@ jobs:
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
 
             echo "Deployment complete ✅"
-
 
 
 
