@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: ["Docker CI"]
     types: [completed]
-  workflow_dispatch: {}   # allow manual runs for testing
+  workflow_dispatch: {}
 
 concurrency:
   group: "docker-cd-${{ github.ref }}"
@@ -146,37 +146,34 @@ jobs:
             sudo docker --version
             sudo docker compose version || true
 
-            # Docker Hub login (if private)
+            # Docker Hub login
             if [ -n "${DKR_USER:-}" ] && [ -n "${DKR_TOKEN:-}" ]; then
               echo "$DKR_TOKEN" | sudo docker login -u "$DKR_USER" --password-stdin
             fi
 
             # Replace placeholder image if exists
             if grep -q "__DOCKER_HUB_IMAGE__" docker-compose.yml; then
-              if [ -n "${DKR_USER:-}" ]; then
-                sudo sed -i "s|__DOCKER_HUB_IMAGE__|$DKR_USER/admin-app:latest|g" docker-compose.yml
-              else
-                echo "::warning::__DOCKER_HUB_IMAGE__ found but DOCKER_HUB_USERNAME is empty"
-              fi
+              sudo sed -i "s|__DOCKER_HUB_IMAGE__|$DKR_USER/admin-app:latest|g" docker-compose.yml
             fi
 
             # Validate docker-compose before start
             sudo docker compose -f docker-compose.yml config
 
-            # 🔹 FULL CLEANUP: remove old containers/images
-            sudo docker compose down --remove-orphans
-            sudo docker rm -f $(sudo docker ps -aq --filter "ancestor=admin-app") || true
+            # 🔹 FULL CLEANUP: stop/remove old containers
+            echo "Stopping and removing any old admin-app containers..."
+            sudo docker ps -aq --filter "name=admin-app" | xargs -r sudo docker rm -f
+            sudo docker ps -aq --filter "ancestor=admin-app" | xargs -r sudo docker rm -f
+            sudo docker ps -aq --filter "ancestor=$DKR_USER/admin-app:latest" | xargs -r sudo docker rm -f
+
+            # 🔹 Remove dangling and old images
+            echo "Removing old/untagged images..."
+            sudo docker images -q --filter "dangling=true" | xargs -r sudo docker rmi -f
+            sudo docker rmi -f "$DKR_USER/admin-app:latest" || true
             sudo docker rmi -f $(sudo docker images -q admin-app) || true
-            sudo docker rmi -f $(sudo docker images -q --filter "dangling=true") || true
-            sudo rm -f nginx/conf.d/upstreams.generated.conf || true
 
-            # 🔹 REMOVE specific old tagged image
-            if [ -n "${DKR_USER:-}" ]; then
-              sudo docker rmi -f "$DKR_USER/admin-app:latest" || true
-            fi
-
-            # 🔹 PULL latest images
-            sudo docker compose pull
+            # 🔹 Pull latest image
+            echo "Pulling latest image..."
+            sudo docker pull "$DKR_USER/admin-app:latest"
 
             # Start nginx + first app
             sudo docker compose up -d nginx express-app-admin-1
@@ -200,4 +197,5 @@ jobs:
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
 
             echo "Deployment complete ✅ (HTTP only)"
+
 
