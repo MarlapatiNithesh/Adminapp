@@ -168,6 +168,14 @@ jobs:
             sudo docker system prune -af
             sudo rm -f nginx/conf.d/upstreams.generated.conf || true
 
+            # 🔹 REMOVE old image explicitly
+            if [ -n "${DKR_USER:-}" ]; then
+              sudo docker rmi -f "$DKR_USER/admin-app:latest" || true
+            fi
+
+            # 🔹 PULL latest images
+            sudo docker compose pull
+
             # Start nginx + first app
             sudo docker compose up -d nginx express-app-admin-1
 
@@ -190,4 +198,5 @@ jobs:
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
 
             echo "Deployment complete ✅ (HTTP only)"
+
 
