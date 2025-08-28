@@ -163,12 +163,14 @@ jobs:
             # Validate docker-compose before start
             sudo docker compose -f docker-compose.yml config
 
-            # 🔹 FULL CLEANUP to avoid duplicate upstreams
+            # 🔹 FULL CLEANUP: remove old containers/images
             sudo docker compose down --remove-orphans
-            sudo docker system prune -af
+            sudo docker rm -f $(sudo docker ps -aq --filter "ancestor=admin-app") || true
+            sudo docker rmi -f $(sudo docker images -q admin-app) || true
+            sudo docker rmi -f $(sudo docker images -q --filter "dangling=true") || true
             sudo rm -f nginx/conf.d/upstreams.generated.conf || true
 
-            # 🔹 REMOVE old image explicitly
+            # 🔹 REMOVE specific old tagged image
             if [ -n "${DKR_USER:-}" ]; then
               sudo docker rmi -f "$DKR_USER/admin-app:latest" || true
             fi
@@ -198,5 +200,4 @@ jobs:
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
 
             echo "Deployment complete ✅ (HTTP only)"
-
 
