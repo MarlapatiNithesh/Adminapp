@@ -1,10 +1,7 @@
-name: Docker CI
+ name: Docker CI
 
 on:
   push:
-    branches: [ master, main ]
-    tags: ["*"]   # also run on tags if you want
-  pull_request:
     branches: [ master, main ]
   workflow_dispatch: {}
 
@@ -27,31 +24,35 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Only login on non-PR events
+      # Login to Docker Hub
       - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
-      - name: Build and push (./server/Dockerfile)
+      # Remove all previous tags/images for admin-app
+      - name: Remove all previous tags from Docker Hub
+        run: |
+          echo "Fetching all tags..."
+          tags=$(curl -s -u "${{ secrets.DOCKER_HUB_USERNAME }}:${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" \
+            "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_HUB_USERNAME }}/admin-app/tags/?page_size=100" \
+            | jq -r '.results[].name')
+          
+          echo "Deleting old tags..."
+          for tag in $tags; do
+            echo "Deleting $tag..."
+            curl -s -X DELETE \
+              -u "${{ secrets.DOCKER_HUB_USERNAME }}:${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" \
+              "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_HUB_USERNAME }}/admin-app/tags/$tag/"
+          done
+
+      # Build and push only latest
+      - name: Build and push latest
         uses: docker/build-push-action@v6
         with:
           context: ./server
           file: ./server/Dockerfile
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/admin-app:latest
-            ${{ secrets.DOCKER_HUB_USERNAME }}/admin-app:${{ github.sha }}
-
-      # Optional: Remove old `latest` before re-pushing
-      - name: Remove old latest tag from Docker Hub
-        if: github.event_name != 'pull_request'
-        run: |
-          curl -X DELETE \
-            -u "${{ secrets.DOCKER_HUB_USERNAME }}:${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}" \
-            "https://hub.docker.com/v2/repositories/${{ secrets.DOCKER_HUB_USERNAME }}/admin-app/tags/latest/"
-
-
+          push: true
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/admin-app:latest
