@@ -38,7 +38,7 @@ jobs:
 
       - name: Pack infra
         run: tar -czf infra.tar.gz -C infra .
-      
+
       - name: SSH connectivity check
         uses: appleboy/ssh-action@v0.1.7
         with:
@@ -137,7 +137,7 @@ jobs:
             # Validate docker-compose
             sudo docker compose -f docker-compose.yml config
 
-            # 🔹 FULL CLEANUP: stop/remove old containers and images
+            # 🔹 FULL CLEANUP
             echo "Stopping old admin-app containers..."
             sudo docker ps -aq --filter "name=express-app-admin" | xargs -r sudo docker rm -f
             sudo docker ps -aq --filter "ancestor=admin-app" | xargs -r sudo docker rm -f
@@ -157,7 +157,7 @@ jobs:
             # Validate nginx
             sudo docker compose run --rm nginx nginx -t
 
-            # Render upstreams
+            # Render upstreams dynamically
             [ -f scripts/render_upstream.sh ] && sudo chmod +x scripts/render_upstream.sh && sudo bash scripts/render_upstream.sh
 
             # Start remaining replicas
@@ -165,8 +165,6 @@ jobs:
 
             # Reload nginx
             sudo docker compose exec -T nginx nginx -s reload
-
-
 
 
 
