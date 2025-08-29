@@ -111,7 +111,7 @@ jobs:
             [ -f nginx/nginx.conf ] || { echo "::error::nginx/nginx.conf missing"; exit 1; }
             [ -f nginx/conf.d/app.conf ] || { echo "::error::nginx/conf.d/app.conf missing"; exit 1; }
 
-            # Ensure Docker + Compose
+            # Docker + Compose
             if ! command -v docker >/dev/null 2>&1; then
               curl -fsSL https://get.docker.com | sh
               sudo usermod -aG docker "$USER" || true
@@ -120,7 +120,7 @@ jobs:
             sudo docker --version
             sudo docker compose version || true
 
-            # Docker Hub login
+            # Docker login
             if [ -n "${DKR_USER:-}" ] && [ -n "${DKR_TOKEN:-}" ]; then
               echo "$DKR_TOKEN" | sudo docker login -u "$DKR_USER" --password-stdin
             fi
@@ -133,74 +133,42 @@ jobs:
             # Validate docker-compose
             sudo docker compose -f docker-compose.yml config
 
-            # Full cleanup
+            # Cleanup
             sudo docker compose down --remove-orphans
             sudo docker system prune -af
             mkdir -p nginx/conf.d/upstreams
-            rm -f nginx/conf.d/upstreams/app_upstream.conf || true
+            rm -f nginx/conf.d/upstreams/node_upstream.conf || true
 
-            # Start Nginx + first replica
-            sudo docker compose up -d nginx express-app-admin-1
+            # Start all app replicas + nginx
+            sudo docker compose up -d express-app-admin-1 express-app-admin-2 express-app-admin-3 nginx
 
-            # ================================
-            # Wait for all app containers to be healthy and collect IPs
-            # ================================
-            IPS=()
+            # Wait for all containers
             for service in express-app-admin-1 express-app-admin-2 express-app-admin-3; do
-              echo "Waiting for $service to be running and get IP..."
-              for ((i=0;i<12;i++)); do
-                STATUS=$(sudo docker inspect -f '{{.State.Running}}' "$service" 2>/dev/null || echo "false")
-                if [[ "$STATUS" == "true" ]]; then
-                  ip=$(sudo docker inspect -f "{{ with index .NetworkSettings.Networks \"app-net\" }}{{ .IPAddress }}{{ end }}" "$service")
-                  if [[ -n "$ip" ]]; then
-                    IPS+=("$ip")
-                    echo "  $service IP: $ip"
-                    break
-                  fi
-                fi
-                echo "  $service not ready yet ($i/12). Waiting 5s..."
-                sleep 5
-              done
+              echo "Waiting for $service to be running..."
+              sudo docker wait "$service" >/dev/null
             done
-            if ((${#IPS[@]})); then
-              mapfile -t IPS < <(printf "%s\n" "${IPS[@]}" | sort -u)
-            fi
 
-            echo "Collected IPs: ${IPS[*]}"
-
-            # ================================
-            # Generate upstreams dynamically
-            # ================================
-            TMP_FILE="nginx/conf.d/upstreams/app_upstream.conf.tmp"
+            # Generate node_upstream dynamically using service names
+            TMP_FILE="nginx/conf.d/upstreams/node_upstream.conf.tmp"
             {
-              echo "upstream app_upstream {"
-              if ((${#IPS[@]})); then
-                for ip in "${IPS[@]}"; do
-                  echo "  server ${ip}:5000 max_fails=3 fail_timeout=5s;"
-                done
-              else
-                echo "  server 127.0.0.1:9 down;"
-              fi
-              echo "  keepalive 64;"
+              echo "upstream node_upstream {"
+              echo "    least_conn;"
+              for service in express-app-admin-1 express-app-admin-2 express-app-admin-3; do
+                echo "    server ${service}:5000 max_fails=3 fail_timeout=5s;"
+              done
+              echo "    keepalive 64;"
               echo "}"
             } >"$TMP_FILE"
-            mv -f "$TMP_FILE" "nginx/conf.d/upstreams/app_upstream.conf"
+            mv -f "$TMP_FILE" "nginx/conf.d/upstreams/node_upstream.conf"
 
-            # Validate Nginx
+            # Validate and reload Nginx
             sudo docker compose exec -T nginx nginx -t
-
-            # Start remaining replicas
-            sudo docker compose up -d express-app-admin-2 express-app-admin-3
-
-            # Reload Nginx safely
             sudo docker compose exec -T nginx nginx -s reload
 
             # Health check
             curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not responding"
 
             echo "Deployment complete ✅"
-
-
 
 
 
