@@ -11,7 +11,7 @@ services:
       - express-app-admin-2
       - express-app-admin-3
     ports:
-      - "8081:80"
+      - "80:80"
     volumes:
       # conf.d must be writable for generated upstreams
       - ./nginx/conf.d:/etc/nginx/conf.d
