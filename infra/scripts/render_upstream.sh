@@ -7,7 +7,7 @@ set -x
 # ================================
 APP_DIR="/opt/app"
 UPSTREAMS_DIR="$APP_DIR/nginx/conf.d/upstreams"
-OUT_FILE="$UPSTREAMS_DIR/node_upstream.conf"
+OUT_FILE="$UPSTREAMS_DIR/app_upstream.conf"
 SERVICE_PREFIX="express-app-admin"
 NETWORK_NAME="${NETWORK_NAME:-app-net}"
 APP_PORT="${APP_PORT:-5000}"
@@ -70,29 +70,54 @@ $DOCKER system prune -af
 rm -f "$OUT_FILE" || true
 
 # ================================
-# Start all app replicas + nginx
+# Start Nginx + first app
 # ================================
-$DOCKER compose up -d express-app-admin-1 express-app-admin-2 express-app-admin-3 nginx
+$DOCKER compose up -d nginx "${SERVICE_PREFIX}-1"
 
 # ================================
-# Wait for all app containers to be healthy
+# Wait for app containers to be healthy and collect IPs
 # ================================
-for service in express-app-admin-1 express-app-admin-2 express-app-admin-3; do
-    echo "Waiting for $service to be healthy..."
-    $DOCKER wait "$service" >/dev/null
+echo "Waiting for containers to be healthy..."
+RETRIES=12
+SLEEP_SEC=5
+IPS=()
+
+for service in "${SERVICE_PREFIX}-1" "${SERVICE_PREFIX}-2" "${SERVICE_PREFIX}-3"; do
+    echo "Checking $service..."
+    for ((i=0; i<RETRIES; i++)); do
+        STATUS=$($DOCKER inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "missing")
+        if [[ "$STATUS" == "healthy" ]]; then
+            ip=$($DOCKER inspect -f "{{ with index .NetworkSettings.Networks \"$NETWORK_NAME\" }}{{ .IPAddress }}{{ end }}" "$service")
+            if [[ -n "$ip" ]]; then
+                IPS+=("$ip")
+                echo "  $service is healthy at $ip"
+                break
+            fi
+        fi
+        echo "  $service not ready yet ($i/$RETRIES). Waiting $SLEEP_SEC s..."
+        sleep $SLEEP_SEC
+    done
 done
 
+# Remove duplicates
+if ((${#IPS[@]})); then
+    mapfile -t IPS < <(printf "%s\n" "${IPS[@]}" | sort -u)
+fi
+
 # ================================
-# Generate node_upstream dynamically using service names
+# Generate Nginx upstreams
 # ================================
 TMP_FILE="$OUT_FILE.tmp"
 {
   echo "upstream node_upstream {"
-  echo "    least_conn;"
-  for service in express-app-admin-1 express-app-admin-2 express-app-admin-3; do
-    echo "    server ${service}:${APP_PORT} max_fails=3 fail_timeout=5s;"
-  done
-  echo "    keepalive 64;"
+  if ((${#IPS[@]})); then
+    for ip in "${IPS[@]}"; do
+      echo "  server ${ip}:${APP_PORT} max_fails=3 fail_timeout=5s;"
+    done
+  else
+    echo "  server 127.0.0.1:9 down;"
+  fi
+  echo "  keepalive 64;"
   echo "}"
 } >"$TMP_FILE"
 mv -f "$TMP_FILE" "$OUT_FILE"
@@ -101,6 +126,11 @@ mv -f "$TMP_FILE" "$OUT_FILE"
 # Validate Nginx config
 # ================================
 $DCOMPOSE exec -T nginx nginx -t || echo "::warning::Nginx config test failed"
+
+# ================================
+# Start remaining app replicas
+# ================================
+$DOCKER compose up -d "${SERVICE_PREFIX}-2" "${SERVICE_PREFIX}-3"
 
 # ================================
 # Reload Nginx safely
@@ -115,5 +145,6 @@ curl -fsS -m 5 http://127.0.0.1/health || echo "::warning::/health not respondin
 echo "Deployment complete ✅"
 echo "Rendered upstreams:"
 cat "$OUT_FILE"
+
 
 
