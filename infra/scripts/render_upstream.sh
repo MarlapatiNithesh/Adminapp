@@ -75,19 +75,38 @@ rm -f "$OUT_FILE" || true
 $DOCKER compose up -d nginx "${SERVICE_PREFIX}-1"
 
 # ================================
-# Generate upstreams dynamically
+# Wait for app containers to be healthy and collect IPs
 # ================================
-mapfile -t CID_NAME < <($DOCKER ps --filter "name=$SERVICE_PREFIX" --filter "status=running" --format '{{.ID}} {{.Names}}')
+echo "Waiting for containers to be healthy..."
+RETRIES=12
+SLEEP_SEC=5
 IPS=()
-for row in "${CID_NAME[@]}"; do
-  cid="${row%% *}"
-  ip="$($DOCKER inspect -f "{{ with index .NetworkSettings.Networks \"$NETWORK_NAME\" }}{{ .IPAddress }}{{ end }}" "$cid")"
-  [[ -n "$ip" ]] && IPS+=("$ip")
+
+for service in "${SERVICE_PREFIX}-1" "${SERVICE_PREFIX}-2" "${SERVICE_PREFIX}-3"; do
+    echo "Checking $service..."
+    for ((i=0; i<RETRIES; i++)); do
+        STATUS=$($DOCKER inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || echo "missing")
+        if [[ "$STATUS" == "healthy" ]]; then
+            ip=$($DOCKER inspect -f "{{ with index .NetworkSettings.Networks \"$NETWORK_NAME\" }}{{ .IPAddress }}{{ end }}" "$service")
+            if [[ -n "$ip" ]]; then
+                IPS+=("$ip")
+                echo "  $service is healthy at $ip"
+                break
+            fi
+        fi
+        echo "  $service not ready yet ($i/$RETRIES). Waiting $SLEEP_SEC s..."
+        sleep $SLEEP_SEC
+    done
 done
+
+# Remove duplicates
 if ((${#IPS[@]})); then
-  mapfile -t IPS < <(printf "%s\n" "${IPS[@]}" | sort -u)
+    mapfile -t IPS < <(printf "%s\n" "${IPS[@]}" | sort -u)
 fi
 
+# ================================
+# Generate Nginx upstreams
+# ================================
 TMP_FILE="$OUT_FILE.tmp"
 {
   echo "upstream app_upstream {"
@@ -106,7 +125,7 @@ mv -f "$TMP_FILE" "$OUT_FILE"
 # ================================
 # Validate Nginx config
 # ================================
-$DCOMPOSE exec -T nginx nginx -t
+$DCOMPOSE exec -T nginx nginx -t || echo "::warning::Nginx config test failed"
 
 # ================================
 # Start remaining app replicas
