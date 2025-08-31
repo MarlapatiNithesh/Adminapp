@@ -9,7 +9,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: 'http://72.60.96.189', // Frontend URL
+  origin: 'http://72.60.96.189:8080', // frontend URL, NO trailing slash
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -17,7 +17,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health check endpoint
+// Health check
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -26,7 +26,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Root API endpoint
+// API root
 app.get('/api', (req, res) => {
   res.status(200).json({
     message: 'Welcome to the API root',
@@ -34,14 +34,9 @@ app.get('/api', (req, res) => {
   });
 });
 
-// API Routes
+// API routes
 app.use('/api/admin', adminRoutes);
 app.use('/api/subadmin', subadminRoutes);
-
-// Root frontend endpoint (optional, mostly for health checks)
-app.get('/', (req, res) => {
-  res.status(200).json({ message: 'Welcome to the backend server' });
-});
 
 // 404 handler
 app.use((req, res) => {
@@ -59,6 +54,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
 });
+
 
 
 
