@@ -26,13 +26,21 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes (all prefixed with /api)
+// Root API endpoint
+app.get('/api', (req, res) => {
+  res.status(200).json({
+    message: 'Welcome to the API root',
+    routes: ['/api/admin', '/api/subadmin']
+  });
+});
+
+// API Routes
 app.use('/api/admin', adminRoutes);
 app.use('/api/subadmin', subadminRoutes);
 
-// Root endpoint
+// Root frontend endpoint (optional, mostly for health checks)
 app.get('/', (req, res) => {
-  res.status(200).json({ message: 'Welcome to the API' });
+  res.status(200).json({ message: 'Welcome to the backend server' });
 });
 
 // 404 handler
@@ -46,10 +54,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Internal Server Error' });
 });
 
-// Start server (listen on all interfaces for Docker)
+// Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
 });
+
 
 
