@@ -10,12 +10,12 @@ const usersController = require('../controllers/usersController');
 const notificationsController = require('../controllers/notificationsController');
 
 // Bookings
-router.get('/bookings',bookingsController.getAllBookings);
+router.get('/bookings', auth, checkRole('admin') ,bookingsController.getAllBookings);
 router.get('/bookings/:id', auth, checkRole('admin'), bookingsController.getBookingById);
 router.patch('/bookings/:id/status', auth, checkRole('admin'), bookingsController.updateBookingStatus);
 
 // Services
-router.get('/services', auth, checkRole('admin'), servicesController.getAllServices);
+router.get('/services', auth,checkRole('admin'), servicesController.getAllServices);
 router.post('/services', auth, checkRole('admin'), servicesController.addService);
 router.delete('/services/:id', auth, checkRole('admin'), servicesController.deleteService);
 
