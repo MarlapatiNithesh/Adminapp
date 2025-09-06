@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends tini curl \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
-    PORT=5000
+    PORT=5000 \
+    GOOGLE_APPLICATION_CREDENTIALS="/app/serviceAccountKey.json"
 
 WORKDIR /app
 
