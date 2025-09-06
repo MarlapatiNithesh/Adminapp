@@ -17,7 +17,12 @@ RUN npm ci --omit=dev
 # Copy source (routes, server.js, etc.)
 COPY . .
 
-# (Optional) if your app reads PORT, ensure it's set
+# ✅ Copy service account key
+COPY serviceAccountKey.json ./serviceAccountKey.json
+
+# ✅ Fix permissions so non-root "node" user can read it
+RUN chown node:node /app/serviceAccountKey.json
+
 EXPOSE 5000
 
 # Healthcheck (expects your app has GET /health returning 200)
@@ -29,4 +34,5 @@ USER node
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["npm", "start"]
+
 
